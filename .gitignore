@@ -1,0 +1,11 @@
+# The validator is fetched, not vendored: `cd tools && npm install`.
+tools/node_modules
+
+# Built packs are produced by `make dist`. The .hshader files are small (under
+# 100 KiB) and committed so the repository carries a usable download; the source
+# archive is a build product and is not.
+dist/Horizon-Aurora-Source.zip
+
+.DS_Store
+__pycache__/
+*.pyc

@@ -1,0 +1,12 @@
+{
+  "name": "horizon-aurora-tools",
+  "private": true,
+  "type": "module",
+  "description": "Validation harness for Horizon shader packs (naga 30.0.1 in WebAssembly)",
+  "scripts": {
+    "install-naga": "npm install"
+  },
+  "dependencies": {
+    "naga-wasm": "30.2.0"
+  }
+}

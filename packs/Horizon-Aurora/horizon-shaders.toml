@@ -1,0 +1,28 @@
+schema = 1
+id = "horizon_aurora"
+name = "Horizon Aurora"
+version = "1.0.0"
+api = "0.1"
+description = "Natural blue skies, warm light at sunrise and sunset, air with depth, richer greens, deeper water, a gentle cinematic grade. Two extra full-screen passes; for the lighter variant see Horizon Aurora Lite."
+authors = ["thevoid-creations"]
+license = "MIT"
+shared = ["common.wgsl"]
+
+[sky]
+file = "sky.wgsl"
+name = "Sky"
+
+[material]
+file = "material.wgsl"
+name = "Terrain"
+
+[[post]]
+file = "post/atmosphere.wgsl"
+name = "Air"
+
+[[post]]
+file = "post/grade.wgsl"
+name = "Grade"
+
+[budget]
+gpu_ms = 1.2

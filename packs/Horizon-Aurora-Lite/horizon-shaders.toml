@@ -1,0 +1,24 @@
+schema = 1
+id = "horizon_aurora_lite"
+name = "Horizon Aurora Lite"
+version = "1.0.0"
+api = "0.1"
+description = "Horizon Aurora's look with the air pass left out: the same skies, terrain and colour grade for one full-screen pass fewer. Pick it on integrated graphics or an older GPU."
+authors = ["thevoid-creations"]
+license = "MIT"
+shared = ["common.wgsl"]
+
+[sky]
+file = "sky.wgsl"
+name = "Sky"
+
+[material]
+file = "material.wgsl"
+name = "Terrain"
+
+[[post]]
+file = "post/grade.wgsl"
+name = "Grade"
+
+[budget]
+gpu_ms = 0.8
