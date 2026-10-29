@@ -1,9 +1,9 @@
 schema = 1
 id = "horizon_aurora_lite"
 name = "Horizon Aurora Lite"
-version = "1.0.0"
+version = "2.0.0"
 api = "0.1"
-description = "Horizon Aurora's look with the air pass left out: the same skies, terrain and colour grade for one full-screen pass fewer. Pick it on integrated graphics or an older GPU."
+description = "Horizon Aurora's skies, terrain, water and grade with the screen-space passes left out: no reflections, contact shading, sun shafts or bloom. Two full-screen passes, for integrated graphics and older GPUs."
 authors = ["thevoid-creations"]
 license = "MIT"
 shared = ["common.wgsl"]
@@ -17,8 +17,12 @@ file = "material.wgsl"
 name = "Terrain"
 
 [[post]]
+file = "post/atmosphere.wgsl"
+name = "Air"
+
+[[post]]
 file = "post/grade.wgsl"
 name = "Grade"
 
 [budget]
-gpu_ms = 0.8
+gpu_ms = 0.9

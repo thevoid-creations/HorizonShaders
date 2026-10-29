@@ -747,6 +747,9 @@ def check_pack(pack: Pack, translate: bool, horizon: Path | None) -> dict:
                 if built is None:
                     runtime.append({"stage": kind, "file": file, "ok": False,
                                     "error": "terrain.wgsl is missing in the Horizon checkout"})
+                    # A --horizon run that cannot build the runtime module has not
+                    # checked the thing it was asked to check: that is a failure.
+                    problems.append(Problem(file, "terrain.wgsl is missing in the Horizon checkout"))
                 else:
                     module, _ = naga_run([{"name": f"runtime:{kind}:{file}", "source": built}])
                     runtime.append({"stage": kind, "file": file, "ok": module["ok"],
