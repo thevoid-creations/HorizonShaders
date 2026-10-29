@@ -97,6 +97,7 @@ class Frame:
     rain: float = 0.0
     eye_in: int = 0
     render_distance: float = 192.0
+    time: float = 0.0
     resolution: tuple[float, float] = (1920.0, 1080.0)
     fog_color: list[float] = None
     sky_color: list[float] = None
@@ -182,6 +183,12 @@ def aurora_green_mask(albedo):
     return smoothstep(0.02, 0.14, albedo[1] - max(albedo[0], albedo[2]))
 
 
+def aurora_sun_tint(f: Frame):
+    low = aurora_sun_low(f)
+    return mix(v(1.00, 0.97, 0.90), v(1.00, 0.72, 0.42),
+               low * (0.55 + 0.45 * aurora_daylight(f)))
+
+
 # --- sky.wgsl ----------------------------------------------------------------
 def sky(direction, colour, f: Frame):
     c = list(colour)
@@ -218,7 +225,7 @@ def sky(direction, colour, f: Frame):
 
 
 # --- material.wgsl -----------------------------------------------------------
-def material(albedo, tint, lightmap, translucent, f: Frame):
+def material(albedo, tint, lightmap, translucent, f: Frame, pos=(0.0, 8.0, -6.0)):
     lm = list(lightmap)
     curve = [x * x * (3.0 - 2.0 * x) for x in lm]
     lit = smoothstep(0.30, 1.0, lm)
@@ -234,6 +241,18 @@ def material(albedo, tint, lightmap, translucent, f: Frame):
         deep = mix(v(1.0, 1.0, 1.0), v(0.78, 0.94, 1.16),
                    blue * K["AURORA_WATER"] * headroom)
         c = mul(c, deep)
+        if K.get("AURORA_WAVES", 0.0) > 0.0 and blue > 0.01:
+            t = f.time
+            wa = (pos[0] * 0.85 + t * 0.55, pos[2] * 0.85 + t * 0.31)
+            wb = (pos[0] * 1.45 - t * 0.42, pos[2] * 1.45 + t * 0.67)
+            slope = (math.cos(wa[0]) * 0.36 + math.cos(wb[0]) * 0.29,
+                     math.cos(wa[1]) * 0.36 + math.cos(wb[1]) * 0.29)
+            n = normalize3([-slope[0], 1.0, -slope[1]])
+            eye = normalize3([-pos[0], -pos[1], -pos[2]])
+            half = normalize3(add(eye, normalize3(f.sun_direction)))
+            sparkle = max(dot3(n, half), 0.0) ** 120.0
+            daylight = clamp(aurora_luma(light))
+            c = add(c, smul(aurora_sun_tint(f), sparkle * daylight * blue * K["AURORA_WAVES"] * 0.50))
     return clamp3(c)
 
 
@@ -423,6 +442,30 @@ def main(argv):
             fmt(mat["grass (cave, torch)"]))
     require("material keeps pale ice from flattening",
             mat["ice (day)"][2] < 0.98, fmt(mat["ice (day)"]))
+
+    # The ripple highlight. A sun glint needs the sun behind the viewer, so the
+    # test stands at the edge of a lake with the sun at its back and sweeps the
+    # wave clock; it must appear, stay a highlight, and never touch other blocks.
+    lake_pos = (0.0, -1.6, -6.0)
+    glint_sun = normalize3(v(0.0, 0.26, -0.96))
+    still_frame = Frame(sun_direction=glint_sun, fog_color=NOON.fog_color, sky_color=NOON.sky_color)
+    calm = aurora_luma(material(v(0.30, 0.45, 0.62), v(0.25, 0.45, 0.90), v(1.0, 1.0, 1.0),
+                                True, still_frame, lake_pos))
+    peaks = []
+    for frame_index in range(180):
+        f = Frame(sun_direction=glint_sun, time=frame_index / 60.0,
+                  fog_color=NOON.fog_color, sky_color=NOON.sky_color)
+        peaks.append(aurora_luma(material(v(0.30, 0.45, 0.62), v(0.25, 0.45, 0.90),
+                                         v(1.0, 1.0, 1.0), True, f, lake_pos)))
+    require("water ripples animate", max(peaks) - min(peaks) > 0.02,
+            f"spread {max(peaks) - min(peaks):.4f}")
+    require("the sun glints on water", max(peaks) - calm > 0.05,
+            f"peak +{max(peaks) - calm:.3f}")
+    require("the glint stays a highlight, not a wash", max(peaks) - calm < 0.40,
+            f"peak +{max(peaks) - calm:.3f}")
+    red_still = material(v(0.80, 0.20, 0.20), v(1.0, 1.0, 1.0), v(1.0, 1.0, 1.0), True,
+                         still_frame, lake_pos)
+    require("water ripples never touch red glass", red_still == v(0.80, 0.20, 0.20), fmt(red_still))
 
     # 3. Atmosphere
     rows = []

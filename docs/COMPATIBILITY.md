@@ -1,6 +1,6 @@
 # What Horizon's renderer can and cannot do for a shader pack
 
-Read out of the Horizon source at `main` @ `0a95d1c047` (2026-10-29), not out
+Read out of the Horizon source at `main` @ `a491181` (2026-10-29), not out
 of its documentation — where the two disagree, the code is quoted. Every claim
 below has the file it comes from, so you can check it against whatever Horizon
 you have.
@@ -65,11 +65,39 @@ Consequences worth knowing:
 | Precision | intermediate targets are `Rgba16Float` (`native_post.rs`), so values above 1.0 survive between passes; the final pass writes the 8-bit window format |
 | Source | `gfx/native_post.rs`; call site `gfx.rs` (`native_post` branch) |
 
+## What the post stage's depth buffer *does* buy you
+
+The post stage gets `scene_depth` (reversed: 0 is sky and the far plane), the
+camera's `view`/`projection` and their inverses, and the helper
+`view_position(uv, depth)` that turns a pixel and a depth back into a
+camera-relative world position. That is a full per-pixel reconstruction of the
+visible surface, and it is enough to do real screen-space light transport:
+
+| Effect | How Aurora 2.0 does it | Honest limit |
+| --- | --- | --- |
+| Contact shading (SSAO) | Normals rebuilt from neighbouring depths; 16 hemisphere samples tested against the depth buffer | Local: it darkens creases and where objects meet, not ground a tree shadows from afar |
+| Reflections on water | Reflected ray marched through the screen, tested against depths, colour taken from `scene_color` | Screen-space: only reflects what the camera can see; fades at the picture's edge and falls back to the sky |
+| Volumetric sun shafts | March from each pixel toward the sun's projected position, counting open-sky samples | A screen-space approximation: shafts are occluded only by geometry in view |
+| Bloom | Thresholded bright pass, twelve taps | None beyond cost |
+| Water ripples | Slope from two crossing wave trains; specular from the sun and the eye | A shading effect, not displaced geometry |
+
+One detail makes the reflection pass possible at all: Horizon's **translucent
+terrain pipeline writes depth** (`gfx.rs`, the `translucent` pipeline built with
+`depth_write: true` and alpha blending). A water pixel therefore carries the
+water *surface's* depth, so the normal rebuilt from the depth buffer is the flat
+surface normal a reflection needs — not the lake bed's. Where a renderer does not
+write depth for water, the same pass would read the bed and the flatness test
+would (correctly) refuse to draw a reflection into it.
+
+What depth still cannot give: anything **behind** the camera, anything **off
+screen**, and any **second** view of the world — which is exactly why shadows are
+out of reach.
+
 ## What does not exist (and so is not in the pack)
 
 | Effect you might expect from a Minecraft shader pack | Status in Horizon today |
 | --- | --- |
-| Shadow maps | No shadow stage, and the API's own docs list shadows as "not there yet" (`docs/api/shaders.md`). Nothing in `stages.rs` can receive a shadow map. |
+| Shadow maps | No shadow stage, and the API's own docs list shadows as "not there yet" (`docs/api/shaders.md`). Nothing in `stages.rs` can receive a shadow map. **This cannot be faked**: a cast shadow needs geometry rendered from the light, and no stage runs in a second pass. Aurora 2.0 substitutes screen-space contact shading and says so. |
 | A lighting/deferred pass | Same: no stage. |
 | Entity / particle / hand materials | No stage. Graded only as part of the post picture. |
 | Bloom, DOF, motion blur, screen-space reflections | No dedicated pass; a pack could blur within its own hand-written post pass, but there is no scene history, no exposed sun buffer and no depth-aware helper beyond `depth_at`/`view_position`. Aurora deliberately does none of this. |
@@ -122,9 +150,11 @@ Aurora does, in its four stages, everything the boundary allows without
 resorting to fakery:
 
 1. sky colour and atmospheric glow (sky stage),
-2. a shading curve, colour and water treatment for terrain (material stage),
+2. a shading curve, colour, water treatment and sun glints for terrain
+   (material stage),
 3. aerial perspective, which needs depth and so lives in a post pass,
-4. the grade: highlight roll-off, contrast, saturation, split toning, lift,
+4. contact shading, reflections, sun shafts and bloom, all rebuilt from depth,
+5. the grade: highlight roll-off, contrast, saturation, split toning, lift,
    vignette, dither.
 
 No stage pretends to do shadows, no screenshot is claimed from a machine that

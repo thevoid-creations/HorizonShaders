@@ -1,9 +1,9 @@
 schema = 1
 id = "horizon_aurora"
 name = "Horizon Aurora"
-version = "1.0.0"
+version = "2.0.0"
 api = "0.1"
-description = "Natural blue skies, warm light at sunrise and sunset, air with depth, richer greens, deeper water, a gentle cinematic grade. Two extra full-screen passes; for the lighter variant see Horizon Aurora Lite."
+description = "Screen-space reflections on water, contact shading, volumetric sun shafts, a soft bloom and a cinematic grade over natural blue skies, golden light and air with depth. Six full-screen passes; for weaker GPUs see Horizon Aurora Lite."
 authors = ["thevoid-creations"]
 license = "MIT"
 shared = ["common.wgsl"]
@@ -21,8 +21,24 @@ file = "post/atmosphere.wgsl"
 name = "Air"
 
 [[post]]
+file = "post/ao.wgsl"
+name = "Contact shading"
+
+[[post]]
+file = "post/reflections.wgsl"
+name = "Water reflections"
+
+[[post]]
+file = "post/godrays.wgsl"
+name = "Sun shafts"
+
+[[post]]
+file = "post/bloom.wgsl"
+name = "Bloom"
+
+[[post]]
 file = "post/grade.wgsl"
 name = "Grade"
 
 [budget]
-gpu_ms = 1.2
+gpu_ms = 4.0

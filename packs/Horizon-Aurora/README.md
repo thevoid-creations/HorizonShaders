@@ -1,85 +1,96 @@
-# Horizon Aurora
+# Horizon Aurora 2.0
 
 A shader pack for [Horizon](https://github.com/horizon-rust/horizon), the Rust
-rewrite of Minecraft: Java Edition. It keeps Horizon's own renderer (its
-culling, batching, meshing and LOD) and changes how the world *looks*: deeper
-blue skies, golden sunset light, air with real depth, richer greens, deeper
-water, and a gentle cinematic grade.
+rewrite of Minecraft: Java Edition. It keeps Horizon's renderer — its culling,
+batching, meshing, LOD — and changes how the world looks, using the three stages
+the game's shader API actually runs.
 
-Written against **shader API 0.1, manifest schema 1**, the format Horizon
-serves today. It uses all three stages the API gives a pack — `sky`,
-`material` and `post` — so it needs no other software, no fork of the game and
-no launcher mod.
+**2.0 is the version with the screen-space effects.** The post stage is handed
+the world's depth buffer, the camera's matrices and the sun's direction, which
+is enough to rebuild geometry per pixel. Aurora 2.0 uses that for:
 
-## What it does
+- **Reflections on water.** A ray leaves the water surface, is walked through
+  the scene and tested against real depths, and the colour it lands on is what
+  the eye would have seen reflected. Screen-space: it reflects what the camera
+  can see, and fades out where it cannot.
+- **Contact shading (SSAO).** Normals rebuilt from depth, 16 samples per pixel,
+  so creases, corners, cave mouths and the base of every object sit in their own
+  shadow. This is what stops terrain looking like flat cardboard.
+- **Volumetric sun shafts.** Light scattered by air, marched from each pixel
+  toward the sun's real position on screen, so the shafts take the shape of
+  whatever is in front of the sun.
+- **Bloom, for the genuinely bright.** Above a threshold, so the sun, lava and
+  glowstone glow and ordinary bright grass does not.
+- **Moving water.** Two wave trains crossing in world space; the highlight is
+  the sun reflected off that slope toward your eye, so a lake glitters when it
+  faces the sun and goes quiet when it faces away.
 
-| Stage | File | What changes |
-| --- | --- | --- |
-| Sky | `sky.wgsl` | The dome is deepened toward a real noon blue, warm light gathers around a low sun, the half of the sky away from the sun stays blue, vanilla's excess sunset orange is given back, and nights go cold and clean instead of black. |
-| Terrain | `material.wgsl` | A soft shading curve on lit faces (more shape on sunlit terrain, cave and torch light left exactly as vanilla), richer greens for grass, leaves and crops, deeper and colder water, ice and blue glass. |
-| Air | `post/atmosphere.wgsl` | Aerial perspective over the whole view: distant land takes on the sky's colour, warmed toward a low sun. The near ground is untouched. |
-| Grade | `post/grade.wgsl` | Highlights roll off instead of clipping, a gentle S-curve for contrast, a little more saturation, an orange correction, cool shade / warm light split toning, readable darks, a soft vignette and 8-bit dither. |
+Everything from 1.0 is underneath: deeper noon blue, golden low sun, air with
+depth, richer greens, and a grade with highlight roll-off and readable darks.
 
-The sun, moon, stars, clouds, entities, the hand and the HUD are drawn by
-Horizon itself and are unaffected — the pack changes the world's picture, not
-the interface or the game.
+## What it is not
 
-## Performance
+**There are no cast shadows.** A tree does not lay a shadow across the ground,
+because a shadow map needs the world drawn again from the sun's point of view,
+and Horizon's shader API has no stage inside a second render pass
+(`docs/api/shaders.md`, "Not there yet"). The shadows you do get are contact
+shadows from SSAO: real, but local. Nothing in this pack pretends otherwise.
 
-Four stages, one of them a per-pixel terrain shader and two full-screen passes.
-No shadow maps, no extra render targets, no temporal accumulation, no blur
-chains. `[budget] gpu_ms = 1.2` is the pack's own declared aim.
+No entity textures, no block-specific materials, no screen-space GI, no
+motion blur: the API has no hook for them.
 
-On a GPU that struggles, use **Horizon Aurora Lite** instead: the same skies,
-terrain and grade with the air pass left out. Its budget is 0.8 ms.
+Full map of the boundary, with source references: [docs/COMPATIBILITY.md](../../docs/COMPATIBILITY.md).
 
-## Changing the look
+## The chain
 
-Options (`[[options]]`) are part of the format, but Horizon builds every pack
-with its options at their **defaults** today — the game has no screen for
-changing them yet (`crates/horizon-client/src/game/native_shaders.rs` passes
-`OptionKind::default_constant`). This pack therefore declares none rather than
-show settings that cannot be changed.
+| # | Pass | File | What it does |
+| --- | --- | --- | --- |
+| — | Sky | `sky.wgsl` | Dome colour, gold around a low sun, cold nights |
+| — | Terrain | `material.wgsl` | Shading curve, greens, water tone, ripple highlights |
+| 1 | Air | `post/atmosphere.wgsl` | Aerial perspective at distance |
+| 2 | Contact shading | `post/ao.wgsl` | SSAO from depth |
+| 3 | Water reflections | `post/reflections.wgsl` | Screen-space reflections |
+| 4 | Sun shafts | `post/godrays.wgsl` | Volumetric light |
+| 5 | Bloom | `post/bloom.wgsl` | Highlight glow |
+| 6 | Grade | `post/grade.wgsl` | Roll-off, contrast, colour, vignette, dither |
 
-Its tuning lives in `common.wgsl` as constants with names that say what they do:
+Six full-screen passes and two stage shaders. `[budget] gpu_ms = 4.0`. On a GPU
+that cannot afford that, **Horizon Aurora Lite** runs the same skies, terrain
+and grade with two passes instead of six.
+
+## Turning effects down
+
+Horizon builds every pack's pipelines with its declared options at their
+**defaults** — `game/native_shaders.rs` passes `OptionKind::default_constant()`
+and no screen changes them — so this pack declares **no options**. A setting you
+cannot change is a lie. Instead every effect has a constant in `common.wgsl`:
 
 ```wgsl
-const AURORA_SATURATION: f32 = 1.085;   // colour richness, 1 = vanilla
-const AURORA_CONTRAST: f32 = 0.16;      // midtone S-curve, 0 = vanilla
-const AURORA_WARMTH: f32 = 0.78;        // golden light around a low sun
-const AURORA_HAZE: f32 = 0.24;          // aerial perspective at the render distance
-const AURORA_WATER: f32 = 0.70;         // how much deeper water goes
-const AURORA_VIGNETTE: f32 = 0.11;      // corner darkening, 0 = off
+const AURORA_REFLECT: f32 = 0.55;          // reflections, 0 = off
+const AURORA_AO_STRENGTH: f32 = 0.72;      // contact shading, 0 = off
+const AURORA_RAYS: f32 = 0.42;             // sun shafts, 0 = off
+const AURORA_BLOOM: f32 = 0.30;            // glow, 0 = off
+const AURORA_WAVES: f32 = 1.0;             // ripples, 0 = still water
 ```
 
-Save the file while the game is running: Horizon checks the pack twice a second
+Save the file with the game running: Horizon re-checks the pack twice a second
 and rebuilds it in place ("Shader pack Horizon Aurora reloaded" appears in the
-chat). If an edit does not compile, the chat tells you the file, line and
-column and the last good version keeps drawing.
+chat). If an edit does not compile, the chat names the file, line and column and
+the last good version keeps drawing.
 
 ## Installing
 
-Put the `.hshader` file (or this folder) in Horizon's `shaderpacks` directory,
-then choose it under **Options → Horizon Settings → Shader Packs**. Clicking it
-again turns it off. Horizon checks the pack before it runs and refuses a broken
-one with the reason in the chat, so a bad pack can never leave you with a black
-screen.
+Put `Horizon-Aurora.hshader` (or this folder) in Horizon's `shaderpacks`
+directory, then pick it under **Options → Horizon Settings → Shader Packs**.
+Clicking it again turns it off. The game checks the pack before it runs and
+refuses a broken one with the reason in chat.
 
-The full walkthrough, including where `shaderpacks` is on Windows, macOS and
-Linux, is in [docs/INSTALL.md](../../docs/INSTALL.md).
+Step by step, with the folder locations: [docs/INSTALL.md](../../docs/INSTALL.md).
 
 ## Compatibility
 
-- Manifest `schema = 1`, shader API `api = "0.1"`.
-- Horizon refuses a pack written for another API line with a clear message
-  rather than drawing something wrong; if a future version moves to API 0.2,
-  this pack will say so in the chat instead of misbehaving.
-- Tested against Horizon `main` at commit `0a95d1c047` (2026-10-29).
-
-## Credit
-
-Pack by thevoid-creations. Inspired by the look of Golden Hour, Horizon's own
-example pack, and of the classic shader packs that made Minecraft's weather
-feel like weather.
+Manifest `schema = 1`, shader API `api = "0.1"`. Checked against Horizon `main`
+at `a491181` (2026-10-29). A Horizon serving a different API line refuses the
+pack with a message rather than drawing something wrong.
 
 Licensed under the MIT License; see [LICENSE](LICENSE).
